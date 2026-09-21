@@ -1,0 +1,13 @@
+Cargo.lock
+target/
+data/moments.npy
+__pycache__/
+tmp
+tests/
+rust-files/
+docs/_build
+corecode
+
+*.so
+*.egg-info
+.DS_Store
