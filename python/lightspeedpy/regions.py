@@ -33,18 +33,18 @@ class Region:
             line = f.readline()
             typ = line[:line.find('(')]
         if typ == "circle":
-            return CircleRegion(filename)
+            return CircleRegion.from_file(filename)
         elif typ == "polygon":
-            return PolygonRegion(filename)
+            return PolygonRegion.from_file(filename)
         elif typ == "box":
-            return BoxRegion(filename)
+            return BoxRegion.from_file(filename)
         elif typ == "ellipse":
             try:
-                return EllipseAnnulusRegion(filename)
+                return EllipseAnnulusRegion.from_file(filename)
             except:
-                return EllipseRegion(filename)
+                return EllipseRegion.from_file(filename)
         elif typ == "annulus":
-            return AnnulusRegion(filename)
+            return AnnulusRegion.from_file(filename)
         else:
             raise Exception(f"Unrecognized region type `{typ}`")
         
@@ -59,7 +59,34 @@ class Region:
 
     
 class EllipseAnnulusRegion(Region):
-    def __init__(self, filename):
+    def __init__(self, cx, cy, maj1, min1, maj2, min2, angle):
+        """
+        Make an elliptical annulus region directly from its parameters
+
+        Parameters
+        ----------
+        cx, cy : float
+            Center of the annulus in physical coordinates
+        maj1, min1 : float
+            Semi-major and semi-minor axes of the inner ellipse in physical pixels
+        maj2, min2 : float
+            Semi-major and semi-minor axes of the outer ellipse in physical pixels
+        angle : float
+            Rotation angle in degrees, as in DS9
+        """
+        self.cx = float(cx)
+        self.cy = float(cy)
+        self.a1_2 = float(maj1)**2
+        self.b1_2 = float(min1)**2
+        self.a2_2 = float(maj2)**2
+        self.b2_2 = float(min2)**2
+        self.angle = float(angle) * np.pi / 180 - np.pi/2
+
+    @classmethod
+    def from_file(cls, filename):
+        """
+        Load an elliptical annulus region from a `ciao` format, physical coordinate region file
+        """
         with open(filename) as f:
             line = f.readline()
             if not line.startswith("ellipse"):
@@ -68,13 +95,7 @@ class EllipseAnnulusRegion(Region):
             cx, cy, maj1, min1, maj2, min2, angle = line[8:-1].split(",")
             if ":" in cx:
                 raise Exception("Can only load `ciao` formatted region files in physical coordinates")
-            self.cx = float(cx)
-            self.cy = float(cy)
-            self.a1_2 = float(maj1)**2
-            self.b1_2 = float(min1)**2
-            self.a2_2 = float(maj2)**2
-            self.b2_2 = float(min2)**2
-            self.angle = float(angle) * np.pi / 180 - np.pi/2
+            return cls(cx, cy, maj1, min1, maj2, min2, angle)
 
     def contains(self, x, y):
         rot_x = np.sin(self.angle) * (x - self.cx) - np.cos(self.angle) * (y - self.cy)
@@ -87,7 +108,27 @@ class EllipseAnnulusRegion(Region):
         return np.pi * (np.sqrt(self.a2_2 * self.b2_2) - np.sqrt(self.a1_2 * self.b1_2))
     
 class AnnulusRegion(Region):
-    def __init__(self, filename):
+    def __init__(self, cx, cy, r1, r2):
+        """
+        Make a circular annulus region directly from its parameters
+
+        Parameters
+        ----------
+        cx, cy : float
+            Center of the annulus in physical coordinates
+        r1, r2 : float
+            Inner and outer radii in physical pixels
+        """
+        self.cx = float(cx)
+        self.cy = float(cy)
+        self.r1_2 = float(r1)**2
+        self.r2_2 = float(r2)**2
+
+    @classmethod
+    def from_file(cls, filename):
+        """
+        Load a circular annulus region from a `ciao` format, physical coordinate region file
+        """
         with open(filename) as f:
             line = f.readline()
             if not line.startswith("annulus("):
@@ -96,10 +137,7 @@ class AnnulusRegion(Region):
             cx, cy, r1, r2 = line[8:-1].split(",")
             if ":" in cx:
                 raise Exception("Can only load `ciao` formatted region files in physical coordinates")
-            self.cx = float(cx)
-            self.cy = float(cy)
-            self.r1_2 = float(r1)**2
-            self.r2_2 = float(r2)**2
+            return cls(cx, cy, r1, r2)
 
     def contains(self, x, y):
         # Assume x and y are in degrees
@@ -110,7 +148,30 @@ class AnnulusRegion(Region):
         return np.pi * (self.r2_2 - self.r1_2)
 
 class BoxRegion(Region):
-    def __init__(self, filename):
+    def __init__(self, x, y, l, w, angle=0):
+        """
+        Make a box region directly from its parameters
+
+        Parameters
+        ----------
+        x, y : float
+            Center of the box in physical coordinates
+        l, w : float
+            Full length and width of the box in physical pixels (not half-widths, as in DS9)
+        angle : float, optional
+            Rotation angle in degrees, as in DS9
+        """
+        self.x = float(x)
+        self.y = float(y)
+        self.l = float(l)
+        self.w = float(w)
+        self.angle = float(angle) * np.pi / 180
+
+    @classmethod
+    def from_file(cls, filename):
+        """
+        Load a box region from a `ciao` format, physical coordinate region file
+        """
         with open(filename) as f:
             line = f.readline()
             if not line.startswith("box("):
@@ -119,11 +180,7 @@ class BoxRegion(Region):
             x, y, l, w, angle = line[4:-1].split(",")
             if ":" in x:
                 raise Exception("Can only load `ciao` formatted region files in physical coordinates")
-            self.x = float(x)
-            self.y = float(y)
-            self.l = float(l)
-            self.w = float(w)
-            self.angle = float(angle) * np.pi / 180
+            return cls(x, y, l, w, angle)
 
     def get_alpha(self, x, y, v0, v1):
         return ((x - self.x) * v0 + (y - self.y) * v1) / (v0*v0 + v1*v1)
@@ -139,17 +196,29 @@ class BoxRegion(Region):
   
       
 class PolygonRegion(Region):
-    def __init__(self, filename):
+    def __init__(self, points):
+        """
+        Make a polygon region directly from its vertices
+
+        Parameters
+        ----------
+        points : array_like
+            Sequence of (x, y) vertices in physical coordinates, shape (N, 2)
+        """
+        self.points = np.array(points, dtype=float).reshape(-1, 2)
+
+    @classmethod
+    def from_file(cls, filename):
+        """
+        Load a polygon region from a `ciao` format, physical coordinate region file
+        """
         with open(filename) as f:
             line = f.readline()
             if not line.startswith("polygon("):
                 raise Exception("Polygon regions must start with polygon")
             if line.endswith('\n'): line = line[:-1]
             points = line[8:-1].split(",")
-            self.points = []
-            for i in range(0, len(points), 2):
-                self.points.append((float(points[i]), float(points[i+1])))
-            self.points = np.array(self.points)
+            return cls([(float(points[i]), float(points[i+1])) for i in range(0, len(points), 2)])
 
     def contains_single(self, x, y):
         # Assume x and y are in degrees
@@ -190,16 +259,33 @@ class PolygonRegion(Region):
             return output.reshape(x.shape)
 
 class CircleRegion(Region):
-    def __init__(self, filename):
+    def __init__(self, x, y, radius):
+        """
+        Make a circular region directly from its parameters
+
+        Parameters
+        ----------
+        x, y : float
+            Center of the circle in physical coordinates
+        radius : float
+            Radius of the circle in physical pixels (a radius, not a diameter, as in DS9)
+        """
+        self.x = float(x)
+        self.y = float(y)
+        self.radius2 = float(radius)**2
+
+    @classmethod
+    def from_file(cls, filename):
+        """
+        Load a circular region from a `ciao` format, physical coordinate region file
+        """
         with open(filename) as f:
             line = f.readline()
             if not line.startswith("circle("):
                 raise Exception("Circle regions must start with circle")
             if line.endswith('\n'): line = line[:-1]
             x, y, radius = line[7:-1].split(",")
-            self.x = float(x)
-            self.y = float(y)
-            self.radius2 = float(radius)**2
+            return cls(x, y, radius)
     
     def contains(self, x, y):
         dist2 = (x - self.x)**2 + (y - self.y)**2
@@ -210,18 +296,37 @@ class CircleRegion(Region):
 
     
 class EllipseRegion(Region):
-    def __init__(self, filename):
+    def __init__(self, x, y, a, b, angle=0):
+        """
+        Make an elliptical region directly from its parameters
+
+        Parameters
+        ----------
+        x, y : float
+            Center of the ellipse in physical coordinates
+        a, b : float
+            Semi-major and semi-minor axes in physical pixels
+        angle : float, optional
+            Rotation angle in degrees, as in DS9
+        """
+        self.x = float(x)
+        self.y = float(y)
+        self.a = float(a)
+        self.b = float(b)
+        self.angle = float(angle) * np.pi / 180 - np.pi/2
+
+    @classmethod
+    def from_file(cls, filename):
+        """
+        Load an elliptical region from a `ciao` format, physical coordinate region file
+        """
         with open(filename) as f:
             line = f.readline()
             if not line.startswith("ellipse("):
                 raise Exception("Ellipse regions must start with ellipse")
             if line.endswith('\n'): line = line[:-1]
             x, y, a, b, angle = line[8:-1].split(",")
-            self.x = float(x)
-            self.y = float(y)
-            self.a = float(a)
-            self.b = float(b)
-            self.angle = float(angle) * np.pi / 180 - np.pi/2
+            return cls(x, y, a, b, angle)
     
     def contains(self, x, y):
         rot_x = np.sin(self.angle) * (x - self.x) - np.cos(self.angle) * (y - self.y)
